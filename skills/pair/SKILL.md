@@ -15,11 +15,11 @@ invoked headlessly via `codex exec` — the user never copies context between te
 - First word `fast` or `strict` selects the profile; otherwise profile is **standard**.
 - Everything else is the task description.
 
-| Profile  | Plan handoff doc | Human plan approval | Claude review loop | Extra codex review |
-|----------|------------------|---------------------|--------------------|--------------------|
-| fast     | no (one-paragraph instruction) | no | no | no |
-| standard | yes              | no                  | yes (max 2 rounds) | no |
-| strict   | yes              | **yes — wait for approval** | yes (max 2 rounds) | yes (`codex exec review`) |
+| Profile  | Plan handoff doc | Human plan approval | Run gate (Phase 4) | Claude review loop | Extra codex review |
+|----------|------------------|---------------------|--------------------|--------------------|--------------------|
+| fast     | no (one-paragraph instruction) | no | no | no | no |
+| standard | yes              | no                  | yes, when the change has a runtime surface | yes (max 2 rounds) | no |
+| strict   | yes              | **yes — wait for approval** | yes; scenarios approved with the plan | yes (max 2 rounds) | yes (`codex exec review`) |
 
 ## Preflight (all profiles)
 
@@ -48,6 +48,13 @@ invoked headlessly via `codex exec` — the user never copies context between te
     assert. Name the **seams** — the public boundaries the new behavior should be tested
     through (the exported function, the HTTP route, the CLI invocation), not the internals
     behind them. Criteria the project cannot observe from outside are not criteria.
+  - Run scenarios: the concrete invocations someone would use to exercise this by hand — the
+    normal path, plus the edge cases you expect to matter (empty input, oversized input,
+    missing permission, an unavailable dependency, interruption partway through). Each names
+    an input and the result that should be observable. **Write these now, before any code
+    exists** — a scenario list drawn up after reading the implementation only ever covers what
+    the implementation already handles. If the change has no runtime surface at all, say so
+    here and why (see Gate 4).
   - Pointers: relevant existing files/functions/patterns you found, so Codex doesn't re-explore blindly.
   - **Deliberately DO NOT prescribe the implementation approach** — no step-by-step design,
     no function signatures unless they are an external contract. Let Codex think.
@@ -66,8 +73,9 @@ invoked headlessly via `codex exec` — the user never copies context between te
     new runtimes, containers — is off limits: say what you need and stop instead."
 - **fast**: skip the doc; compose a single clear paragraph with the same spirit (goal + acceptance + don't commit).
 - **strict only**: show the handoff doc to the user and wait for explicit approval before
-  continuing. Include the seam list in what you ask them to approve — testing effort lands
-  where the seams say it lands, so an unconfirmed seam is an unmade decision.
+  continuing. Include the seam list and the run scenarios in what you ask them to approve —
+  testing effort lands where the seams say it lands and the run gate checks what the scenarios
+  say it checks, so an unconfirmed seam or scenario is an unmade decision.
 
 ## Phase 2 — Branch
 
@@ -171,7 +179,8 @@ format check → lint → typecheck → tests → build.
 
 **Exit codes decide pass/fail. Never trust an agent's claim that "tests pass".** That much is
 necessary but not sufficient: a green suite proves you did not break what already worked, not
-that the new behavior is tested. Three assertions, all against the Preflight baseline:
+that the new behavior is tested. Three assertions, all against the Preflight baseline — and
+then a fourth gate that starts the program:
 
 | Assertion | Fails when |
 |---|---|
@@ -201,9 +210,69 @@ Any of these means the gate went green by lowering the bar. Send it back as a fa
   nothing. Stash the non-test part of the change (`git stash push -- <source paths>`), re-run
   the suite, and check the new tests now fail; `git stash pop` afterwards. A new test that
   still passes without the implementation is a red gate.
-- **Once all three assertions hold, commit the implementation** (see Committing above).
-- Report every assertion's outcome, including any you could not evaluate (a runner with no
-  count, a project with no test paths). Never let an unavailable check read as a passing one.
+
+### Gate 4 — run it like a user (standard/strict)
+
+The three assertions above prove the code compiles and the suite is honest. None of them
+starts the program. "Builds clean, tests green, crashes on launch" passes all three, so before
+committing, the thing gets run.
+
+**First decide which case the change is in, and record which:**
+
+| Case | When | What runs |
+|---|---|---|
+| **Drive it** | there is a user-facing entry point — CLI, HTTP service, worker, batch job | start it and walk the Phase 1 scenarios against it |
+| **Drive a substitute surface** | no entry point, but the behavior is reachable from outside (a library, an SDK, an internal module) | a throwaway driver script that calls the **seam** named in the handoff the way a consumer would, run from the project's own environment, deleted afterwards |
+| **Not applicable** | one of the reasons below, and only those | nothing runs — but the reason is recorded and reported |
+
+Not-applicable is legitimate for: a change with no runtime surface (config, CI, docs, schema
+or type-only edits); a behavior-preserving refactor with no observable change; work needing
+hardware, a paid external service, or a production credential; an interactive TUI or desktop
+GUI with no automatable driver; or a run whose side effects cannot be confined to scratch
+data. It is **not** legitimate as a default, and "the tests cover it" is not one of the
+reasons — that is what Gate 4 exists to doubt. When you record it, also state what covers the
+change instead (which tests at which seams), so "not applicable" never reads as
+"nothing checked this".
+
+**A fresh subagent drives — not Codex, and not you.** Codex knows which paths it implemented
+and will walk those; you carry the whole planning conversation and will read past the same
+gaps you planned. Spawn a subagent that may execute but must not edit source, and give it
+only: how to start the program, the scenario list, and each scenario's expected result.
+**Do not give it the diff.** Not having read the implementation is the entire point.
+
+**It reports evidence, not a verdict.** "Ran it, works fine" is exactly the kind of claim the
+exit-code rule exists to refuse. Require one row per scenario: the exact command or input, the
+observed output **verbatim**, the expected result from the handoff, and match/mismatch. A
+scenario that could not be run (dependency service down, port in use, missing fixture) is
+recorded as **unavailable** — never as passing.
+
+**Mechanics.** Run against scratch data — a temp directory, a test config, an ephemeral port —
+never a real database, real credentials, or the user's own files. This is the first step in
+the workflow with side effects outside a test harness, so it inherits the hard human-decision
+gates below: if a scenario cannot be exercised without touching real data, stop and ask rather
+than improvising. Bound it with a hard timeout on startup and on each scenario, and a
+guaranteed teardown (`trap`) so nothing is left running. A failure to *start* that traces to a
+missing system-level dependency is a Tier 3 stop, not a gate failure, and does not consume a
+fix round.
+
+**On mismatch**, send it back through the same fix loop, and require the fix to land a test:
+
+```
+Scenario "<name>": ran <command>, observed <observed>, expected <expected>.
+Add a failing test at <seam> that reproduces this, then fix the code so it passes.
+Do not change the existing tests.
+```
+
+A runtime failure patched without a test means paying for this run again every round instead
+of buying the coverage once. **The 2-round cap covers all four gates together**, not 2 rounds
+each.
+
+### Closing out Phase 4
+
+- **Once all four gates hold, commit the implementation** (see Committing above).
+- Report every gate's outcome, including any you could not evaluate (a runner with no count, a
+  project with no test paths, a scenario that could not be run, Gate 4 recorded as not
+  applicable and why). Never let an unavailable check read as a passing one.
 
 ## Phase 5 — Review (standard/strict; skip for fast)
 
@@ -213,6 +282,9 @@ Read/Grep/Glob/Bash(read-only) and to never edit files. Give it:
 
 - The diff scope: `git diff <base-branch>...HEAD` plus untracked files.
 - The acceptance criteria and seams from the handoff doc (not the implementation history).
+- The Gate 4 run report, or the recorded reason it did not apply. Instruction: treat a
+  scenario that ran but was never asserted on by a test as a gap worth naming, and say whether
+  the not-applicable reason still holds now that the diff is visible.
 - Instruction: report only real defects — each finding needs file:line, a one-sentence
   claim, and a **concrete failure scenario** (inputs/state → wrong behavior).
   Style nits and speculative concerns are out of scope.
@@ -237,12 +309,15 @@ finding, stop and ask the user to arbitrate.
 ## Phase 6 — Finish
 
 1. Verification before completion: gates green, acceptance criteria met (check each one),
-   no stray debug output or leftover scratch files in the repo.
+   no stray debug output or leftover scratch files in the repo, no process left running and no
+   scratch directory left behind by Gate 4.
 2. `git status` must be clean — everything from the checkpoints above is already committed.
    If anything is left over, decide whether it belongs in the change (commit it, gates first)
    or is junk (remove it); never leave the tree dirty without saying so.
 3. Report to the user: what was built, the commits on the branch (`git log --oneline <base>..HEAD`),
-   diffstat, gate results, review outcome (including any accepted-but-unfixed findings).
+   diffstat, gate results — including the Gate 4 scenario table, or the reason it did not apply
+   and what covers the change instead — and the review outcome (including any
+   accepted-but-unfixed findings).
 4. **Do NOT merge, push, or open a PR.** The user decides what happens to the branch.
 
 ## Hard human-decision gates
