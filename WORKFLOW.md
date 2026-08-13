@@ -6,7 +6,7 @@
 
 1. **Invocation is the switch.** No resident framework, no change to default behavior. The skills run only when you type `/pair` / `/pair-review`; ordinary conversations carry zero overhead.
 2. **Context isolation.** The implementer (Codex) and the reviewer (a fresh-context Claude subagent) share no conversation history. The reviewer is read-only and cannot "helpfully" edit code.
-3. **Deterministic quality gates.** Format / lint / typecheck / test are judged by script exit codes — never by an agent claiming "tests pass". Exit codes alone only prove nothing already-working broke, so the gate also asserts the test count did not fall below the pre-handoff baseline and that the diff did not weaken the suite (see below).
+3. **Deterministic quality gates.** Format / lint / typecheck / test are judged by script exit codes — never by an agent claiming "tests pass". Exit codes alone only prove nothing already-working broke, so the gate also asserts the test count did not fall below the pre-handoff baseline, that the diff did not weaken the suite, and — when the change has a runtime surface — that the program actually starts and does what the scenarios agreed before the handoff say it should (see below).
 4. **Don't constrain the base model.** The handoff document given to Codex states goals, constraints, acceptance criteria, and pointers to relevant files — deliberately not the implementation approach.
 5. **Bounded loops.** Fix–gate cycles cap at 2 rounds, review–fix cycles cap at 2 rounds; at the cap the workflow stops and reports instead of spinning forever.
 6. **A commit per gated step.** Claude Code commits — never Codex — each time the quality gates go green: one commit for the implementation, one per review round. Gate-fix rounds fold into the following checkpoint, so no commit is ever made while a gate is red. The branch carries a readable trail (what was built → what each review round changed) and is meant to be merged as-is, with no squashing or history rewriting. Committing stays with the orchestrator because that is where the artifact/`.gitignore` check and the gate results live; Codex is told to leave its changes in the working tree.
@@ -38,7 +38,8 @@ One known tension: dependency installation needs the network, so `sandbox_worksp
 A green test suite is evidence that nothing which used to work is broken. It is not evidence
 that the new behavior is tested — a change no test touches leaves the suite green. Worse, the
 instruction "make the tests pass" given to an agent with write access to the tests has an
-obvious cheap solution: change the tests. So the gate is three assertions, not one:
+obvious cheap solution: change the tests. And all of it is static: nothing so far has started
+the program. So the gate is four checks, not one:
 
 1. **Exit codes** — every applicable gate command returns zero.
 2. **Test count** — at or above the baseline recorded *before* the handoff, and non-zero. A
@@ -48,6 +49,22 @@ obvious cheap solution: change the tests. So the gate is three assertions, not o
    deleted test, a loosened assertion, a newly mocked-out collaborator, an added `skip`, or an
    expected value recomputed the way the code computes it are all red gates, not style nits.
    New behavior with a flat test count is likewise red.
+4. **The program runs.** A build that compiles and a suite that passes still leave "crashes on
+   launch" untouched. A fresh subagent — one that has not read the diff, because a driver who
+   has read the implementation stops being a user — starts the program and walks the scenarios
+   written down in Phase 1, before any code existed. It returns a table of command, verbatim
+   output, expected result, match/mismatch; "ran it, works" is refused for the same reason
+   "tests pass" is. A mismatch goes back through the fix loop with a test attached, so the
+   finding is bought once instead of re-discovered every round.
+
+Not every change has something to run. Gate 4 resolves to one of three outcomes, recorded
+either way: drive the real entry point; drive a **substitute surface** (a throwaway consumer
+of the named seam, for a library with no entry point); or *not applicable*, permitted only for
+a stated reason — no runtime surface at all, a behavior-preserving refactor, a need for
+hardware or production credentials, an unautomatable GUI, or side effects that cannot be
+confined to scratch data. "The tests cover it" is not one of the reasons, since doubting
+exactly that is the gate's job. A not-applicable verdict has to name what covers the change
+instead.
 
 The handoff asks for tests at named **seams** — the public boundaries the behavior is observed
 through — because testing effort has to land somewhere deliberate, and a seam agreed up front
