@@ -1,0 +1,54 @@
+name: Bug report
+description: Report incorrect workflow, gate, installer, or review behavior
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: If this could widen a sandbox, execute unexpectedly, expose credentials, or destroy data, use [private vulnerability reporting](https://github.com/hyj28/claude-codex-pair/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: v0.2.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, shell, Claude Code version, Codex CLI version, and relevant git version.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: invocation
+    attributes:
+      label: Invocation
+      description: Show the `/pair` or `/pair-review` command and profile. Redact private repository details.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the relevant redacted gate output or workflow transcript.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for this behavior.
+          required: true
+        - label: I removed credentials, private prompts, and repository-sensitive data.
+          required: true

@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a workflow improvement without weakening its boundaries
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow friction or missing verification are you experiencing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the invocation and observable result.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Safety and autonomy boundaries
+      description: Explain how opt-in activation, sandboxing, fresh review, bounded loops, and human merge control remain intact.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
