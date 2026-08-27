@@ -1,12 +1,72 @@
 # claude-codex-pair
 
-A lightweight, **opt-in** dual-agent development workflow for [Claude Code](https://claude.com/claude-code) + [Codex CLI](https://github.com/openai/codex):
+<p align="center">
+  <img src="docs/assets/pair-hero.svg" alt="claude-codex-pair — Two agents, separate contexts, deterministic gates" width="100%">
+</p>
 
-> **Claude Code plans and reviews. Codex implements. Git is automated. You decide what merges.**
+<p align="center">
+  <a href="https://github.com/hyj28/claude-codex-pair/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/hyj28/claude-codex-pair/ci.yml?branch=main&amp;style=flat-square&amp;label=CI"></a>
+  <a href="https://github.com/hyj28/claude-codex-pair/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/hyj28/claude-codex-pair?display_name=tag&amp;sort=semver&amp;style=flat-square&amp;color=a855f7"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/hyj28/claude-codex-pair?style=flat-square&amp;color=22c55e"></a>
+  <a href="https://www.gnu.org/software/bash/"><img alt="Bash" src="https://img.shields.io/badge/Bash-skill%20installer-293137?style=flat-square&amp;logo=gnubash&amp;logoColor=white"></a>
+  <a href="https://github.com/hyj28/claude-codex-pair/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/hyj28/claude-codex-pair?style=flat-square&amp;logo=github&amp;color=f59e0b"></a>
+</p>
 
-No frameworks, no mandatory state machine, no context copy-pasting between terminals. The whole workflow is two slash commands that do nothing until you explicitly invoke them.
+<p align="center">
+  <strong>Claude Code plans and reviews. Codex implements. Git is automated. You decide what merges.</strong>
+</p>
 
-See [WORKFLOW.md](WORKFLOW.md) for the full design doc.
+<p align="center">
+  <a href="#quick-start"><strong>Quick start</strong></a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="WORKFLOW.md">Design doc</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="https://github.com/hyj28/claude-codex-pair/releases">Releases</a>
+</p>
+
+---
+
+A lightweight, **opt-in** dual-agent development workflow for [Claude Code](https://claude.com/claude-code) + [Codex CLI](https://github.com/openai/codex).
+
+| Claude Code | Deterministic gates | Codex |
+|:--|:--|:--|
+| Clarifies intent, writes the handoff, reviews in fresh context | Format, lint, typecheck, test integrity, and real run scenarios | Implements headlessly in an explicitly pinned workspace sandbox |
+
+> [!NOTE]
+> This is not a resident framework and it never auto-activates. Installing it changes
+> nothing about normal Claude Code or Codex usage; the workflow exists only when you type
+> `/pair` or `/pair-review`.
+
+## Why pair them?
+
+- **Context isolation:** the implementer never shares a conversation with the fresh,
+  read-only reviewer.
+- **Evidence over claims:** exit codes, test counts, test-diff integrity, and runtime
+  scenarios decide whether a checkpoint is green.
+- **Bounded autonomy:** fix and review loops stop after two rounds instead of spinning.
+- **Human ownership:** the workflow can branch and commit, but merging, pushing, migrations,
+  destructive changes, auth, payments, and breaking APIs stop with you.
+
+## Quick start
+
+Requirements: Claude Code CLI, Codex CLI, and git.
+
+```bash
+git clone https://github.com/hyj28/claude-codex-pair.git
+cd claude-codex-pair
+./install.sh
+```
+
+Then open Claude Code in any project:
+
+```text
+/pair Add CSV export with tests at the CLI boundary
+/pair strict Add role-based access control
+/pair-review codex base main
+```
+
+No framework, mandatory state machine, or manual context shuttling is involved. See
+[WORKFLOW.md](WORKFLOW.md) for the complete design and safety boundaries.
 
 ## How it works
 
